@@ -1,0 +1,15 @@
+---
+title: "References"
+author: "J. Strebel"
+date: "Jan. 3rd 2018"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# References
+
+No external references were used beyond the ones already included in the 
+project file.

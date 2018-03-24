@@ -1,0 +1,17 @@
+These are the files of my submission:
+
+Directory SQL:
+- queries.sql contains all data wrangling and analysis SQL queries
+- OSM_data_wrangling_schema.sql contains the PostgreSQL database schema
+- import_csv.sql loads the OSM CSV data files into the database.
+
+Directory Python:
+- schema.py: validation schema from the Udacity class
+- inspect_fields.py: auxiliary standalone program to gather key/value data from the OSM source file.
+- audit_*.py: Python modules for auditing and updating OSM data
+- clean_transform_wrangle.py: Python module provided by Udacity, just slightly adapted to call my updating routines.
+- osm_data_wrangle.py: main program
+
+Main directory:
+- Ch4_OSM_Data_Wrangling.pdf: main document with my results and the description of the data wrangling process.
+ 

@@ -1,0 +1,11 @@
+Description of the OSM extract:
+I chose the rural district of Neustadt an der Aisch-Bad Windsheim, Germany as the basis for data wrangling. It is my home county and it contains my dairy farm and my fields, so I have a personal relationship with that corner of the earth. As I grew up there, I think I know the peculiarities of the region pretty well. 
+For a small introduction to this district, please see https://en.wikipedia.org/wiki/Neustadt_(Aisch)-Bad_Windsheim
+
+I used Mapzen for extracting the data. My custom extract was created on 2017 November 02, at 06:25 PM. The uncompressed file is ca. 350MB.
+
+Bounding box:
+10.0696134999998 - 10.82142999999979,
+49.41005199999984 - 49.75625999999986 
+
+URL Link to map position/area : http://www.openstreetmap.org/#map=11/49.5838/10.5654

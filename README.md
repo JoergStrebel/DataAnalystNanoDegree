@@ -1,2 +1,2 @@
 # DataAnalystNanoDegree
-Code for Udacity Data Analyst Nano Degree
+Code and result documents for my Udacity Data Analyst Nano Degree.

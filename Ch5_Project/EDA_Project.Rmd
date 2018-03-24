@@ -1,0 +1,1153 @@
+---
+title: "EDA on Prosper loan data"
+author: "Jörg Strebel"
+date: "Jan. 3rd 2018"
+output: html_document
+---
+
+========================================================
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, message=FALSE, warning=FALSE, cache=TRUE)
+```
+
+```{r packages, echo=FALSE, message=FALSE, warning=FALSE}
+# Load all of the packages that you end up using in your analysis in this code
+# chunk.
+
+library(Hmisc)
+library(ggplot2)
+library(GGally)
+library(tidyr)
+library(dplyr)
+library(RColorBrewer)
+
+```
+
+```{r Load_the_Data, echo=TRUE }
+# Load the Data
+# 
+setwd("/home/jstrebel/devel/udacity/Ch5_Project/")
+prosper_df = read.csv("prosperLoanData.csv", fill = FALSE,
+                      stringsAsFactors = FALSE,
+                      na.strings=c("", "NA"))
+
+# Check and remove duplicates in key field ListingNumber
+# unique() does not work on this data frame
+prosper_df %>% group_by(LoanKey) %>% summarise(n = n()) %>% filter(n >1) 
+pr_df <- prosper_df %>% distinct(LoanKey, .keep_all = TRUE)
+ 
+# Combine variables CreditGrade and ProsperRating..Alpha.
+pr_df$AllCreditGrade <- ifelse(is.na(pr_df$CreditGrade) == TRUE ,
+                               pr_df$ProsperRating..Alpha. ,
+                               pr_df$CreditGrade)
+
+# Create new LoanStatus with only one Past Due level
+pr_df$LoanStatus.Simple <- sub("^Past Due.+","Past Due",pr_df$LoanStatus,
+                               perl = TRUE)
+
+# parse time and date columns
+pr_df$LoanOriginationDate <- as.Date(pr_df$LoanOriginationDate,
+                                     "%Y-%m-%d %H:%M:%S")
+pr_df$ListingCreationDate <- as.Date(pr_df$ListingCreationDate,
+                                     "%Y-%m-%d %H:%M:%S")
+pr_df$LoanSetupTime <- as.numeric(
+  difftime(pr_df$LoanOriginationDate, pr_df$ListingCreationDate, 
+                                units = "days"))
+
+# NA values
+pr_df <- replace_na(pr_df, list(AllCreditGrade ="Unknown"))
+
+
+# encode (ordered) factors
+pr_df$AllCreditGrade <- factor(pr_df$AllCreditGrade, 
+                               levels = c("AA", "A","B", "C","D","E","HR", 
+                                          "NC","Unknown"), ordered = TRUE)
+
+pr_df$LoanStatus.Simple <- factor(pr_df$LoanStatus.Simple)
+pr_df$IncomeRange <- factor(pr_df$IncomeRange, 
+                                  levels = c("Not employed", 
+                                             "$0",
+                                             "$1-24,999", 
+                                             "$25,000-49,999",
+                                             "$50,000-74,999",
+                                             "$75,000-99,999",
+                                             "$100,000+", 
+                                             "Not displayed"), ordered = TRUE)
+pr_df$IsBorrowerHomeowner <- factor(pr_df$IsBorrowerHomeowner)
+
+# does StatedMonthlyIncome match IncomeRange?
+pr_df$YearlyIncome <- pr_df$StatedMonthlyIncome*12
+head(pr_df[,c("YearlyIncome", "IncomeRange")], n=20)
+
+# rows and columns
+dim(pr_df)
+
+# count NA values in each column
+print("Number of NA values in each variable")
+apply(pr_df, 2, function(x) sum(is.na(x)))
+
+```
+
+This project conducts an exploratory data analysis on loan data from 
+the Prosper company. This company runs a Web-based peer-to-peer lending 
+business; borrowers create listings, in which they describe the loan details. 
+Investors then provide the money. During the term, borrowers pay fixed monthly 
+amounts and investors receive a portion of those payments directly to their 
+Prosper account. See https://www.prosper.com/plp/loans/ for further information.
+
+This assignment relies on the 
+student to ask his own questions about this data set, so I'll put forward my 
+research questions, which are guiding my variable selection, the data 
+transformations and the analysis.
+
+The overarching question is, how good Prosper works for both borrowers and 
+investors. 
+
+* What are the factors that determine the loan status, esp. for successful 
+loans? 
+* What are the factors that determine the loan setup time, e.g. how long does 
+the borrower have to wait for the loan?
+
+The consideration of the time span, in which the data has been collected, is of 
+high importance, as recessions and other economic factors might influence the 
+borrowing and investing behaviour. 
+
+## Problems with variables
+
+* There is a fundamental problem with all date and time fields. As there is no 
+timezone given, it is unclear, how the time and date values can be interpreted.
+* The variable BorrowerAPR not used because of NA values and because 
+BorrowerRate is complete.
+* The variable InvestmentfromFriendsCount could be unreliable, as the Prosper 
+documentation does not reveal, how friends are tracked. Is there a Prosper 
+social network?
+* DebtToIncomeRatio, an important variable for any credit score, has 
+ca. 7.5% missing values. The affected rows will be discarded if this variable is 
+needed.
+* Consistency of StatedMonthlyIncome and IncomeRange: after calculating the 
+yearly income from the StatedMonthlyIncome, a first superficial, visual
+comparison between the two variables was conducted. The yearly income seems to 
+match the IncomeRange variable, although the Prosper documentation does not 
+reveal, if both variables are created from the same data.
+
+
+# Univariate Plots Section
+
+The following variables are used for closer inspection in this report (i.e. 
+univariate, bivariate and multivariate plots): 
+AllCreditGrade, Term, LoanStatus.Simple, BorrowerRate, 
+IsBorrowerHomeowner, IncomeRange, StatedMonthlyIncome, MonthlyLoanPayment, 
+PercentFunded, InvestmentFromFriendsCount, Investors, LoanOriginalAmount, 
+YearlyIncome, LoanSetupTime.
+
+```{r Variable_Selection}
+# select variables
+var_list <- c("AllCreditGrade", "Term","LoanStatus.Simple", "BorrowerRate", 
+              "IsBorrowerHomeowner", "IncomeRange", "StatedMonthlyIncome", 
+"MonthlyLoanPayment", "PercentFunded", "InvestmentFromFriendsCount", 
+"Investors", "LoanOriginalAmount", "YearlyIncome", "LoanSetupTime")
+
+# description of the subset of relevant variables
+str(pr_df[,var_list])
+summary(pr_df[,var_list], maxsum = 10)
+
+print("Number of NA values")
+apply(pr_df[,var_list], 2, function(x) sum(is.na(x)))
+
+create_histo_plot <- function(varname, pBinwidth = 0.1) {
+  return(ggplot(aes_string(x = varname), data = pr_df) + 
+           geom_histogram(binwidth = pBinwidth))
+}
+
+create_bar_plot <- function(varname) {
+  return(ggplot(aes_string(x = varname), data = pr_df) + 
+           geom_bar())
+}
+```
+
+Above, the variable types and summary of the subset is given. The variables 
+show no NA values. 
+The variable LoanOriginationDate introduces a time dimension into the data set, 
+which should give a good first impression of the temporal distribution of the 
+loans. 
+
+```{r Timeseries}
+ggplot(aes(x = LoanOriginationDate, y = ..count..),
+       data = pr_df) +
+  geom_line(stat = "bin", binwidth = 7) +
+  ylab('Loan Count') +
+  xlab('Loan Origination Date')
+summary(pr_df$LoanOriginationDate)
+```
+
+The above time series shows the number of loans originated over time. In this 
+data set, the first loans were handed out on Nov. 5th 2005 and the last recorded 
+loan was originated on March 12th 2014. It is very interesting to see the total 
+lack of granted loans between Nov. 2008 and mid-2009; the reason was a SEC 
+decision to regulate Prospers business model (see https://techcrunch.com/2008/11/26/sec-outlines-its-reasoning-for-shutting-down-p2p-lender-prosper/).
+
+
+```{r Loan_Setup_Time_Distribution}
+create_histo_plot("LoanSetupTime", 0.03) + scale_x_log10()
+
+summary(pr_df$LoanSetupTime)
+paste("Unique values: ", length(unique(pr_df$BorrowerRate)))
+```
+
+LoanSetupTime is a newly calculated variable, that measures how much calendar 
+days pass between the creation of the listing and the origination of the loan. 
+The above histogram shows that most loans are available after 13 days. The 
+distribution of the variable is highly skewed, so some loans take much longer (
+even years). The X-axis is log10-transformed to limit the effect of the long 
+tail in the plot.
+
+```{r LoanStatus.Simple, fig.width=10}
+create_bar_plot("LoanStatus.Simple")
+
+table(pr_df$LoanStatus.Simple)
+```
+
+LoanStatus.Simple is a newly calculated variable and is based on the LoanStatus 
+variable from the data set. All different "Past Due" categories are merged into 
+one "Past Due" category, as I am not interested in the number of days that the 
+borrower is past due. Most loans are current, i.e. are running as expected.
+
+
+```{r StatedMonthlyIncome }
+ggplot(aes(x = StatedMonthlyIncome+1), data = pr_df) +
+  geom_histogram(binwidth = 0.04)+
+  scale_x_log10(name="log StatedMonthlyIncome", limits = c(500, 200000))
+
+summary(pr_df$StatedMonthlyIncome)
+```
+
+Apart from the outliers (zero income), the variable StatedMonthlyIncome seems to 
+be log-normally distributed. 
+[Wikipedia](https://en.wikipedia.org/wiki/Log-normal_distribution)
+cites scientific research papers, that give evidence that the income of 97%–99% 
+of the population is distributed log-normally, which can be attributed to 
+multiplicative wealth creation processes (e.g. compound interest). In the above 
+GGpairs plot, StatedMonthlyIncome seems to have a very long tail with outliers, 
+but the log-transformation reveals a pretty symmetric distribution. 
+Exceptionally high income values do not constitute a data error. 
+
+The variable YearlyIncome has similar properties and will not be further 
+investigated.
+
+
+```{r MemberKey }
+# Nr. of loans per borrower
+LoanCount_df <- pr_df %>% group_by(MemberKey) %>% 
+  summarise(LoansPerMember = n())
+
+ggplot(aes(x = LoansPerMember, y = ..density..), data = LoanCount_df) +
+  geom_histogram(bins = 9) + 
+  scale_x_continuous(breaks = c(1,2, 3, 4,5,6,7,8,9))
+
+LoanCount_df %>% group_by(LoansPerMember) %>% 
+  summarise(No = n())
+```
+
+Most borrowers in this data set only received one loan, but there are borrowers, 
+who receive up to 9 loans.
+
+```{r Term }
+# distribution of term values
+create_histo_plot("Term", 1.0) + scale_x_continuous()
+
+pr_df$Term <- factor(pr_df$Term, ordered = TRUE)
+
+table(pr_df$Term)
+
+create_bar_plot("Term")
+
+```
+
+Term only has three distinct values, 12, 36, 60 months, and no missing values, 
+so it makes sense to transform the  variable into a factor. 
+Most loans run for 36 months.
+
+
+```{r AllCreditGrade }
+# distribution of term values
+
+create_bar_plot("AllCreditGrade")
+
+table(pr_df$AllCreditGrade)
+```
+
+This is a nicely distributed variable; the extreme levels AA and HR are 
+relatively rare, and the most frequent value is "C", which is as expected.
+
+```{r BorrowerRate}
+create_histo_plot("BorrowerRate", 0.015) + scale_x_continuous()
+
+summary(pr_df$BorrowerRate)
+
+paste("Unique values: ", length(unique(pr_df$BorrowerRate)))
+
+pr_df %>% group_by(BorrowerRate) %>% summarise(n = n()) %>% filter(n >700) %>% 
+  arrange(desc(n)) 
+
+create_histo_plot("BorrowerRate", 0.002) + 
+  scale_x_continuous(limits = c(0.26, 0.5))
+```
+
+The distribution shows clear hints of rate breaks / steps. There are only about 
+2300 distinct values for BorrowerRate in this sample. 
+As the aggregation shows, there are very 
+frequent values especially above ca. 0.26. Let's have a closer look at the upper 
+part of the histogram. There is an overly frequent value at 0.3177, and some 
+other spikes nearby. It should be very interesting to have a deeper look at this 
+distribution in the bivariate and multivariate plots to better understand the 
+determinants of this rate distribution.
+
+
+```{r IsBorrowerHomeowner}
+create_bar_plot("IsBorrowerHomeowner")
+table(pr_df$IsBorrowerHomeowner)
+```
+
+There are slightly more homeowners than non-homeowners.   
+
+```{r IncomeRange,  fig.width=12}
+create_bar_plot("IncomeRange")
+table(pr_df$IncomeRange)
+
+```
+
+The income range distribution looks as expected, except for the $100,000+ 
+category, which hides the long tail of the income distribution. It is unclear, 
+why the variable has a category "Not displayed", which hides the income. 
+The variable YearlyIncome could be used to retrieve the values for those loans.
+
+```{r LoanOriginalAmount}
+create_histo_plot("LoanOriginalAmount", 500) 
+
+summary(pr_df$LoanOriginalAmount)
+paste("Unique values: ", length(unique(pr_df$LoanOriginalAmount)))
+
+pr_df %>% group_by(LoanOriginalAmount) %>% summarise(n = n()) %>% 
+  filter(n >200) %>% arrange(desc(n))
+
+```
+
+It is a long-tailed distribution; most of the loan amounts are below 
+$25000. There are clearly preferred values for loan payments 
+(e.g. $4000, $15000, $10000). Maybe these loans amounts reflect certain 
+purchasing intentions, e.g. some consumer loan, or an auto loan with typical 
+orders of magnitude. Overall, there are only ca. 2500  distinct loan amounts in 
+the data set. As there are so few unique values, a log transformation of the 
+x-axis does not reveal much more insight.
+
+```{r MonthlyLoanPayment}
+baseplot <- create_histo_plot("MonthlyLoanPayment", 9) 
+baseplot
+
+summary(pr_df$MonthlyLoanPayment)
+paste("Unique values: ", length(unique(pr_df$MonthlyLoanPayment)))
+
+pr_df %>% group_by(MonthlyLoanPayment) %>% summarise(n = n()) %>% 
+  filter(n >200) %>% arrange(desc(n))
+
+# Need to take a closer look at the center of the distribution
+baseplot + scale_x_continuous(limits = c(NA,1000), breaks = seq(0,1000,100))
+
+```
+
+It is a long-tailed distribution; most of the monthly loan payments are below 
+$1000. There are clearly preferred values for loan payments 
+(e.g. $173.71, $172.76), which probably results from the limited number of 
+values of BorrowerRate and LoanOriginalAmount. 
+The monthly loan payment is 0 for almost 1000 loans, which is peculiar and 
+should be connected to the loan status.
+The complete distribution looks like a mixture of several distributions, 
+because of the "bumps" in the histogram; the region of [750, 1000] might serve 
+as an example.
+
+```{r PercentFunded}
+create_histo_plot("PercentFunded", 0.01) 
+
+summary(pr_df$PercentFunded)
+paste("Unique values: ", length(unique(pr_df$PercentFunded)))
+
+pr_df %>% group_by(PercentFunded) %>% summarise(n = n()) %>% 
+  filter(n >3) %>% arrange(desc(n))
+```
+
+Only an absolute minority of loans are not completely funded (ca. 870). Three 
+loans are even overfunded. This variable seem to be unfit for further 
+investigation, as the number of underfunded loans is too small to base any 
+inferences on.
+
+```{r InvestmentFromFriendsCount}
+create_histo_plot("InvestmentFromFriendsCount", 0.5) 
+
+summary(pr_df$InvestmentFromFriendsCount)
+paste("Unique values: ", length(unique(pr_df$InvestmentFromFriendsCount)))
+
+pr_df %>% group_by(InvestmentFromFriendsCount) %>% summarise(n = n()) %>% 
+  filter(n >3) %>% arrange(desc(n))
+
+```
+
+Only ca. 2000 loans contain investments from friends. This variable seem to be 
+unfit for further investigation. Even if I create a new factor variable with two 
+levels (InvestmentFromFriendsCount>0, InvestmentFromFriendsCount ==0), the 
+levels will be highly imbalanced.
+
+```{r Investors}
+create_histo_plot("Investors", 10) 
+
+summary(pr_df$Investors)
+paste("Unique values: ", length(unique(pr_df$Investors)))
+
+ggplot(aes(x = Investors), data = pr_df) +
+  geom_histogram(bins =  75) + 
+  scale_x_log10()
+```
+
+It seems there are two different distributions: one distribution with a small 
+number of investors (<10), and one with a large number of investors [10, 1189], 
+that is nearly log-normally distributed. The small distribution could be 
+individual investors that are invest in single loans; the second distribution 
+could be caused by the social network available to Prosper clients. 
+As an example, the number of Facebook friends follows a highly skewed, 
+long-tailed distribution (c.f. 
+http://blog.stephenwolfram.com/2013/04/data-science-of-the-facebook-world/), 
+resembling the one found here. So there could be two processes of funding a 
+loan, one by (possibly unknown) individuals, and one by the social network of 
+the borrower.
+
+# Univariate Analysis
+
+### What is the structure of your dataset?
+The data set was last updated on 03/11/2014. This data set contains 113937 loans 
+with 81 variables on each loan, including loan amount, borrower rate 
+(or interest rate), current loan status, borrower income, borrower employment 
+status, borrower credit history, and the latest payment information. 
+Some variables are transformed to 
+factors for easier analysis. The analysis includes 14 variables (plus the 
+variable MemberKey which is used for borrower identification). 
+
+The following variables are ordered factors:
+
+* AllCreditGrade: "AA", "A","B", "C","D","E","HR", "NC", "Unknown" (from best to 
+worst)
+* IncomeRange: "Not employed", $0", "$1-24,999", "$25,000-49,999", 
+"$50,000-74,999", "$75,000-99,999", "$100,000+", "Not displayed"
+* Term: 12, 36, 60 Months
+
+The following variables are unordered factors:
+
+* LoanStatus.Simple: Cancelled, Chargedoff, Completed, Current, Defaulted, 
+FinalPaymentInProgress, Past Due 
+* IsBorrowerHomeowner: False, True
+
+The data set is focused on Prosper loans, which means that it only contains 
+investors and borrowers, that have successfully secured a loan. The data set 
+does not reveal, how many listings were unsuccessful. So it is impossible to 
+find out the determinants of loan origination, as the properties of declined 
+loans and their borrowers are not available. In this respect, this is a biased, 
+censored data set. So the best possible result is a better understanding of the 
+common properties of existing loans, but not a better understanding of the whole 
+loan lifecycle.
+
+### What is/are the main feature(s) of interest in your dataset?
+As I am interested in the determinants of the loan status, I would like to 
+take a closer look at the main variables Credit Grade, the borrower rate and 
+the StatedMonthlyIncome / YearlyIncome. 
+
+
+### What other features in the dataset do you think will help support your \
+investigation into your feature(s) of interest?
+
+I think, home ownership, social pressure (no. of friend investors) and 
+LoanOriginalAmount might also play a role in explaining the loan status. A
+longitudinal data analysis might also be interesting.
+
+### Did you create any new variables from existing variables in the dataset?
+I created the YearlyIncome as 12 times the StatedMonthlyIncome; the new variable 
+can be used to assess the data consistency with the IncomeRange variable.
+
+I also created the AllCreditGrade variable, as a combination of the CreditGrade 
+and the ProsperRating..Alpha. variables, as both variables measure the same 
+concept, but have complementary validity timespans. By combining the variables, 
+the missing values of both variables can be almost completely eliminated.
+
+LoanSetupTime and LoanStatus.Simple are also new variables, please see above for 
+a description.
+
+### Of the features you investigated, were there any unusual distributions? \
+Did you perform any operations on the data to tidy, adjust, or change the form \
+of the data? If so, why did you do this?
+
+I log-transformed the right-skewed variables Investors, StatedMonthlyIncome and
+LoanSetupTime. Investors and StatedMonthlyIncome seem to be partly log-normally 
+distributed, and the underlying real-world processes seem to support this 
+assumption.
+
+MonthlyLoanPayment is dependent on the BorrowerRate and the LoanOriginalAmount; 
+as BorrowerRate and LoanOriginalAmount show highly preferred threshold values. 
+The same threshold structure is again visible in the MonthlyLoanPayment variable
+.
+
+871 duplicate records are removed from the original data set.
+
+
+# Bivariate Plots Section
+
+```{r GGpairs_Plot, fig.width=17, fig.height=17, dev.args=list(pointsize=7)}
+# sample data
+pr_df_sample <- pr_df %>% select(var_list) %>% sample_n(10000)
+
+# plot correlation chart
+ggpairs(pr_df_sample,
+  lower = list(continuous = wrap("points", shape = I('.'))),
+  upper = list(combo = wrap("box", outlier.shape = I('o'))))
+
+```
+
+The observations from the GGpairs plot focus especially on interesting, 
+bivariate plots of a numeric variable and a factor variable. The following 
+variable combinations will be analyzed more deeply with individual plots:
+
+* AllCreditGrade vs. BorrowerRate
+* AllCreditGrade vs. StatedMonthlyIncome
+* AllCreditGrade vs. Investors
+* LoanStatus.Simple vs. LoanOriginalAmount
+* LoanStatus.Simple vs. BorrowerRate
+* LoanStatus.Simple vs. AllCreditGrade
+* LoanStatus.Simple vs. Investors
+
+To better assess the linear correlations among the numeric variables, a 
+correlation matrix is used.
+
+```{r Correlation_Matrix}
+round(cor(pr_df %>% select(BorrowerRate, StatedMonthlyIncome, 
+                           MonthlyLoanPayment, 
+                           PercentFunded, InvestmentFromFriendsCount, 
+                           Investors, 
+                          LoanOriginalAmount, LoanSetupTime, DebtToIncomeRatio) 
+          %>% filter(!is.na(DebtToIncomeRatio))),3)
+
+```
+
+The above correlations matrix reveals some noteworthy correlations:
+
+* LoanOriginalAmount and BorrowerRate are weakly negatively correlated. 
+An additional analysis is needed for this counterintuitive result. Usually, you 
+would think that a higher LoanOriginalAmount causes a higher BorrowerRate 
+because of the higher risk, but in this data set, a higher loan amount is 
+associated with a lower borrower rate.
+* LoanOriginalAmount and StatedMonthlyIncome are weakly positively correlated, 
+which makes sense: the more you earn, the easier it is to get a loan (at least 
+for those borrowers that manage to get a loan at all).
+* Investors and MonthlyLoanPayment / LoanOriginalAmount are weakly positively 
+correlated, which seems obvious.
+* Investors and BorrowerRate are weakly negatively correlated. An additional 
+analysis is needed for this counterintuitive result. Usually, you would think 
+that a higher BorrowerRate attracts more Investors.
+
+The correlation matrix contains rather weak correlations (efficients around 0.3 
+to 0.4), except for the mathematically obvious relationship between 
+BorrowerRate and MonthlyLoanPayment, 
+resp. MonthlyLoanPayment and LoanOriginalAmount.
+
+
+```{r Timeseries_by_LoanStatus}
+
+ggplot(aes(x = LoanOriginationDate, y = ..count..),
+       data = pr_df) +
+  geom_histogram(aes(fill = LoanStatus.Simple),  stat = "bin", binwidth = 30) +
+  scale_fill_brewer(type = "qual") +  
+  ylab('Loan Count') +
+  xlab('Loan Origination Date')
+```
+
+The above plot shows the number of loans by LoanOriginationDate, using 
+LoanStatus as fill color. 
+As most loans run 3 years or more, the proportion of loans with 
+status current becomes dominant from
+2011 on. These loans were originated and are still running or are past due. For 
+most of them, their final loan status is unknown.
+Only loans older than 2011 have certainly completed their full lifecycle and are 
+either completed, defaulted or chargedoff.
+
+It is definitely fascinating, how Prosper expanded its business from 2013 on.
+
+```{r Timeseries_by_AllCreditGrade}
+ggplot(aes(x = LoanOriginationDate, y = ..count..),
+       data = pr_df) +
+  geom_histogram(aes(fill = AllCreditGrade),  stat = "bin", binwidth = 30) +
+  scale_fill_brewer(direction = 1) +  
+  ylab('Loan Count') +
+  xlab('Loan Origination Date') +
+  facet_wrap( ~AllCreditGrade)
+```
+
+The above plot shows the number of loans originated over time and split up by 
+credit grade. The overall number of loans in each credit grade facet follows the 
+distribution of AllCreditGrade, so the level of counts per grade should not be 
+surprising.
+However, the temporal distribution is pretty different among the credit grades.
+Something interesting must have happened for the "C" credit grade - it seems, 
+Prosper originated almost no loans in the second half of 2010, but ramped up 
+loan origination massively from 2012 on. 
+The loan origination to HR credit grade was reduced, as it seems; 
+from 2013 on, HR loans do not participate in the overall uptake of the loan 
+business, but only show a very small peak, that disappears by 2014. Another 
+explanation would be a redefinition of the "HR" credit grade, such that more 
+borrowers would be classified with a better credit grade.
+It should be very interesting to add the third variable LoanStatus.Simple to 
+this plot, in order to see whether loans with a low credit grade also show a bad 
+loan status; this is  investigated in the multivariate plots section.
+
+
+```{r LoanOriginalAmount_vs_BorrowerRate}
+ggplot(aes(x = LoanOriginalAmount, y = BorrowerRate),
+       data = pr_df) +
+  geom_bin2d(bins = 70) +
+  scale_fill_distiller(direction = -1) +
+  scale_x_continuous(breaks = seq(0,40000,5000)) +
+  geom_smooth(method = "lm", color = "red")
+```
+
+Normally, this plot should be a scatter plot using geom_point(), but a 2D 
+heatmap of bin counts was chosen to eliminate overplotting. This plot has a 
+clear and unique peak at around $4000 loan amount and 0.32 rate, which are the 
+combined peaks of the individual distributions. 
+The smoothing function is a linear 
+regression and shows the negative correlation of the two variables. Maybe the 
+credit grade can explain this relationship; this is  investigated in the 
+multivariate plots section.
+
+```{r AllCreditGrade_vs_StatedMonthlyIncome}
+ggplot(aes(x = AllCreditGrade, y = StatedMonthlyIncome+1), data = pr_df) + 
+  geom_boxplot() +
+  stat_summary(fun.y = mean, geom ='point', shape = 4) +
+  scale_y_log10(name="log StatedMonthlyIncome")
+
+by(pr_df$StatedMonthlyIncome, pr_df$AllCreditGrade, summary)
+```
+
+The results of this plot are not surprising: the credit grade is directly linked 
+to the stated monthly income. Both the mean and the median of the income rise 
+with the credit grade. The only exception are borrowers with unknown credit 
+grade, whose income places them somewhere between a "C" and a "D" credit grade. 
+It is interesting to see, that even borrowers with a good credit grade report a 
+monthly income of  $0, which seems unrealistic. Maybe this was a deliberate 
+misinformation by the borrowers in order to avoid giving their true income, or 
+0 is used as a replacement for a null value.
+
+```{r AllCreditGrade_vs_Investors}
+ggplot(aes(x = AllCreditGrade, y = Investors), data = pr_df) + 
+  geom_boxplot() +
+  stat_summary(fun.y = mean, geom ='point', shape = 4) +
+  scale_y_log10(name="log Investors")
+
+by(pr_df$Investors, pr_df$AllCreditGrade, summary)
+
+```
+
+This plot shows an unsurprising result: in most cases, the number of investors 
+is directly related to the credit grade of the borrower. For the "C" and "D" 
+grade, this relationship does not hold for the median, but for the mean.
+
+This observation leads to a hypothesis: maybe the higher number of investors in 
+good credit grades is caused by a higher loan amount in those credit grades, 
+i.e. maybe the number of investors is driven by the loan amount? Let's find out 
+in the next plot.
+
+```{r AllCreditGrade_vs_LoanOriginalAmount}
+ggplot(aes(x = AllCreditGrade, y = LoanOriginalAmount), data = pr_df) + 
+  geom_boxplot() +
+  stat_summary(fun.y = mean, geom ='point', shape = 4)
+
+by(pr_df$LoanOriginalAmount, pr_df$AllCreditGrade, summary)
+
+```
+
+As far as I can tell from this dataset, the loan amount in credit grades "AA", 
+"A", "B" is pretty much comparable, so the hypothesis is probably wrong, which 
+leads to the conclusion that the number of investors is driven by the credit 
+grade of the borrower.
+
+Interestingly, the loan amount in the credit grades "C" and worse is declining 
+on average; these borrowers obviously receive less money. 
+Also, the fact is noteworthy, that the maximum loan amount seems to be tied to 
+the credit grade. Borrowers with grade "D" and "E" are pretty unlikely to 
+receive a $25000 loan, whereas borrowers with a lower grade are relegated to 
+even lower maximum amounts.
+
+```{r LoanStatus.Simple_vs_LoanOriginalAmount,  fig.width=15}
+ggplot(aes(x = LoanStatus.Simple, y = LoanOriginalAmount), data = pr_df) + 
+  geom_boxplot() +
+  stat_summary(fun.y = mean, geom ='point', shape = 4)
+
+by(pr_df$LoanOriginalAmount, pr_df$LoanStatus.Simple, summary)
+```
+
+The dataset does not reveal any strong relationship between the loan status and 
+the loan amount. The lost loans (status "Chargedoff", "Defaulted") share similar 
+properties, only "Past Due" loans tend to be larger.
+
+```{r LoanStatus.Simple_vs_BorrowerRate, fig.width=15}
+ggplot(aes(x = LoanStatus.Simple, y = BorrowerRate), data = pr_df) + 
+  geom_boxplot() +
+  stat_summary(fun.y = mean, geom ='point', shape = 4)
+
+by(pr_df$BorrowerRate, pr_df$LoanStatus.Simple, summary)
+```
+
+The lost loans (status "Chargedoff", "Defaulted") and the troubled ones (status 
+"Past Due") show an elevated borrower rate, as compared to the loans running 
+smoothly. "Cancelled" is a separate category, as the loan did not run its 
+normal course.
+
+This observation leads to the question, if the borrower rate is inversely 
+related to the credit grade of the borrower (i.e. the better the grade, the 
+lower the rate). So, a bad borrower would also cause troubled loans. Let's find 
+out in the next plot.
+
+```{r AllCreditGrade_vs_BorrowerRate}
+ggplot(aes(x = AllCreditGrade, y = BorrowerRate), data = pr_df) + 
+  geom_boxplot() +
+  stat_summary(fun.y = mean, geom ='point', shape = 4)
+
+by(pr_df$BorrowerRate, pr_df$AllCreditGrade, summary)
+```
+
+Although the plot shows a lot of outliers, the message is clear: the credit 
+grade is directly related to the rate, except for the "NC" grade, which receives 
+an average rate.
+
+This also provides a partial answer to the question: borrowers with a bad credit 
+grade need to pay more for their loan, and these loans are also more prone to 
+cause trouble.
+
+```{r AllCreditGrade_vs_LoanSetupTime}
+ggplot(aes(x = AllCreditGrade, y = LoanSetupTime), data = pr_df) + 
+  geom_boxplot() +
+  stat_summary(fun.y = mean, geom ='point', shape = 4) +
+  coord_trans(y = "log10")
+
+by(pr_df$LoanSetupTime, pr_df$AllCreditGrade, summary)
+```
+
+There seems to be no discernible difference among the loan setup times per 
+credit grade, except for the unknown credit grade. Maybe, the credit grade 
+determines the duration of the loan?
+
+```{r Term_vs_AllCrediGrade}
+ggplot(aes(x = Term, fill = AllCreditGrade), data = pr_df) +
+  geom_bar( position = "fill") 
+
+by(pr_df$AllCreditGrade, pr_df$Term, summary)
+```
+
+If you break out the relative proportions for each term value, there are few 
+differences between the three term values, i.e. borrowers can pick their term 
+value independent of their credit grade. There is one notable exception: the 
+dataset only contains loans from borrowers with "HR" credit grade that run for 
+36 months, not longer, not shorter. There might be a restriction in place for 
+those borrowers.
+
+```{r LoanStatus.Simple_vs_AllCreditGrade}
+ggplot(aes(x = AllCreditGrade, y = LoanStatus.Simple), data = pr_df) + 
+  geom_count(aes(size = ..prop.., group = LoanStatus.Simple, color = ..n..)) +
+  scale_size_area(max_size = 20)
+
+by(pr_df$LoanStatus.Simple, pr_df$AllCreditGrade, summary)
+
+```
+
+The connection between loan status and credit grade is depicted here and it 
+supports the findings up to this point. The size of the points gives the 
+proportion of cases and the color gives the absolute number of cases. The 
+proportion is calculated along the y-axis loan status, i.e. summing up the 
+proportions over all credit grades for one loan status should yield 100%.
+
+The plot shows that the proportion of troubled loans (esp. defaulted and 
+chargedoff) is higher for borrowers with lower credit grades ("D" and below). 
+Also, cancellations happen disproportionately often for borrowers with the 
+lowest ("HR") credit grade. 
+
+The plot also shows that borrowers with good credit grade ("AA" - "B") have 
+comparatively fewer troubled loans and more completed loans. 
+
+
+```{r Investors_vs_BorrowerRate}
+ggplot(aes(x = BorrowerRate, y = Investors),
+       data = pr_df) +
+  geom_bin2d(bins = 40, drop = TRUE) +
+  scale_fill_distiller(direction = 1) +
+  geom_smooth(method = "lm", color = "red") + 
+  geom_quantile(quantiles = c(0.25, 0.75), color = "green", linetype = 2)
+
+# Zoom in on the center
+ggplot(aes(x = BorrowerRate, y = Investors),
+       data = pr_df) +
+  geom_bin2d(bins = 40, drop = TRUE) +
+  scale_fill_distiller(direction = 1) +
+  scale_y_log10(limits = c(NA, 500)) + 
+  scale_x_continuous(limits = c(NA, 0.37))
+```
+
+The two plots above display the relationship between the BorrowerRate and the 
+number of investors of a loan. A heatmap was chosen, as the scatter plot showed 
+too much overplotting. 
+
+Plot 1 features the complete dataset and a linear regression (red line) of the 
+linear relationship between the number of investors and the BorrowerRate. The 
+two green lines are the 25% and 75% quantile. It becomes clear that there are 
+hardly any investors that are willing to fund a loan with a rate >0.4. The risk 
+is probably too high, as those high rates are associated with dubious borrowers
+. 
+
+Plot 2 zooms in on the first plot and uses a log10-transformed y-axis. It shows 
+the clustered nature of investor's engagement and the negative relationship 
+between the two variables (visible in the darker patches of the light-blue area)
+.
+
+```{r LoanStatus.Simple_vs_Investors, fig.width=15}
+
+ggplot(aes(x = LoanStatus.Simple, y = Investors), data = pr_df) + 
+  geom_boxplot() +
+  stat_summary(fun.y = mean, geom ='point', shape = 4) +
+  scale_y_log10()
+
+by(pr_df$Investors, pr_df$LoanStatus.Simple, summary)
+```
+
+I cannot tell a clear relationship from this plot. The loan status "Cancelled" 
+seems to be low on investors, but there are very loans with this status, so the 
+comparability may not be given. "Current" loans show a highly skewed 
+distribution, as the mean and the median are far apart - there must be some 
+loans with a huge number of investors in this category.
+
+```{r LoanOriginalAmount_vs_LoanSetupTime}
+ggplot(aes(x = LoanOriginalAmount, y = LoanSetupTime),
+       data = pr_df) +
+  geom_bin2d(bins = 100, drop = TRUE) +
+  scale_fill_gradient() +
+  scale_x_continuous(breaks = seq(0,40000,5000)) +
+  geom_smooth(method = "lm", color = "red")
+```
+
+The plot shows the loan setup time over the loan amount. Although there are some 
+outliers for smaller loan amounts, there is no visible relationship between the 
+two variables. The linear regression line is plotted in red and is essentially 
+flat.
+
+
+# Bivariate Analysis
+
+### Talk about some of the relationships you observed in this part of the \
+investigation. How did the feature(s) of interest vary with other features in \
+the dataset?
+
+As I am interested in the determinants of the loan status, I was looking at the 
+main variables AllCreditGrade, the BorrowerRate and the StatedMonthlyIncome.
+
+LoanOriginalAmount and BorrowerRate are weakly negatively correlated, and 
+Investors and BorrowerRate are also weakly negatively correlated. 
+The number of Investors and LoanOriginalAmount are heavily dependent on the 
+credit 
+grade of the borrower. We don't see any really big loans (>$20.000) for 
+borrowers with a low credit grade. Either the dataset is a sample with a bias 
+in that respect, or there is actually little data in this area.
+
+Interestingly, the StatedMonthlyIncome is also related to the credit grade - a 
+higher median income tends to be associated with a better credit grade, but 
+there are numerous outliers and the relationship does not hold for minimum and 
+maximum income values per credit grade.
+
+### Did you observe any interesting relationships between the other features \
+(not the main feature(s) of interest)?
+
+I found the timeseries based on originated loans pretty interesting, as you 
+could both see the business development of Prosper and the changing lending 
+policies.
+
+### What was the strongest relationship you found?
+
+The BorrowerRate is directly and strongly related to the credit grade of the 
+borrower, except for the “NC” grade, which receives an average rate (however, 
+there are a lot of outliers). The causality in this relationship seems 
+obvious - the credit grade determines the rate, not the other way around.
+
+# Multivariate Plots Section
+
+```{r Timeseries_by_AllCreditGrade_LoanStatus}
+ggplot(aes(x = LoanOriginationDate, y = ..count..),
+       data = pr_df) +
+  geom_histogram(aes(fill = LoanStatus.Simple),  stat = "bin", binwidth = 30) +
+  scale_fill_brewer(type="qual") +  
+  ylab('Loan Count') +
+  xlab('Loan Origination Date') +
+  facet_wrap( ~ AllCreditGrade)
+```
+
+This is a detailed view of the corresponding bivariate plot, using the variable 
+AllCreditGrade as a facet. The 
+bars in the histograms are subdivided by the variable LoanStatus.Simple, which 
+allows us to see the temporal distribution of this variable per credit grade. 
+Especially the "HR" (but also the "E) credit grade is interesting: between 2006 
+and end of 2008, a 
+large proportion of those loans turned out to be troubled (defaulted or 
+chargedoff). 
+The problem with this plot lies in the fact, that the loan status is a delayed 
+indicator. In the worst case, it takes the complete loan lifecycle to find out, 
+that the borrower cannot pay. That may take up to 5 years. It is therefore not 
+surprising that we see very little troubled loans after 2010.
+
+```{r Timeseries_by_BorrowerRate_AllCreditGrade}
+ggplot(aes(x = LoanOriginationDate, y = BorrowerRate), data = pr_df) +
+  geom_line(stat = 'summary', fun.y = median, linetype = 2, color = 'blue') +
+  ylab('Borrower Rate') +
+  xlab('Loan Origination Date') +
+  facet_wrap( ~AllCreditGrade) +
+  geom_smooth(color="red")
+```
+
+The above plot shows the temporal distribution of the median BorrowerRate, 
+instead of the number of loans, as in the plot before. Here, the impact of the 
+financial crisis is plainly visible: from mid-2007 on, the rates go up and 
+remain on a higher level for borrowers with a low credit grade 
+(esp. "D", "E" and "HR"), whereas borrowers with good credit grade remain 
+largely unaffected. The rates seem to come down a little after 2013, though.
+
+```{r LoanOriginalAmount_vs_BorrowerRate_vs_AllCreditGrade, fig.width=12, fig.height=12}
+ggplot(aes(x = LoanOriginalAmount, y = BorrowerRate),
+       data = pr_df) +
+  geom_bin2d( bins = 40, drop = TRUE) +
+  scale_x_continuous(breaks = seq(0,40000,5000)) +
+  scale_y_continuous(limits = c(NA,0.37)) +
+  facet_wrap(~ AllCreditGrade) +
+  geom_quantile(quantiles = 0.5, color = "Red")
+```
+
+This expanded view of the corresponding bivariate plot clarifies the question, 
+why we don't see more large loans handed out. 
+Loan amounts larger than $25.000 only go to borrowers with a credit grade "B" or 
+better.
+It is also instructive to see how the BorrowerRate is depending on the credit 
+grade; the median line for this variable is plotted in red.
+The highest loan count can be found in the "HR" facet panel. It also has the 
+highest median rate. This means that loan origination for these borrowers is 
+extremely concentrated on this type of loan (amount ca. $4000, rate ca. 0.32).
+
+```{r LoanOriginalAmount_vs_BorrowerRate_vs_Term, fig.width=10}
+ggplot(aes(x = LoanOriginalAmount, y = BorrowerRate),
+       data = pr_df) +
+  geom_bin2d( bins = 40, drop = TRUE) +
+  scale_x_continuous(breaks = seq(0,40000,5000)) +
+  scale_y_continuous(limits = c(NA,0.37)) +
+  facet_wrap(~ Term) +
+  geom_quantile(quantiles = 0.5, color = "Red")
+
+by(pr_df$BorrowerRate, pr_df$Term, summary)
+```
+
+The 36 and 60 months facet only show minor differences: the 36 month facet 
+includes a wider span of borrower rates, but the median borrower rate looks 
+pretty similar. Moreover, larger loan >$15.000 with elevated borrower rates 
+>0.26 only exist for medium term loans, not long term loans (at least in this 
+dataset).
+
+```{r LoanOriginalAmount_vs_BorrowerRate_vs_IsBorrowerHomeowner}
+ggplot(aes(x = LoanOriginalAmount, y = BorrowerRate),
+       data = pr_df) +
+  geom_bin2d( bins = 40, drop = TRUE) +
+  scale_x_continuous(breaks = seq(0,40000,5000)) +
+  scale_y_continuous(limits = c(NA,0.37)) +
+  facet_wrap(~ IsBorrowerHomeowner) +
+  geom_quantile(quantiles = 0.5, color = "Red")
+
+by(pr_df$BorrowerRate, pr_df$IsBorrowerHomeowner, summary)
+```
+
+Home ownership seems to have only a minimal impact on loan origination; the 
+median BorrowerRate seems to be lower though, which makes sense, as the house 
+could act as a collateral.
+
+```{r LoanOriginalAmount_vs_AllCreditGrade_vs_Term}
+ggplot(aes(x = AllCreditGrade, y = LoanOriginalAmount, fill = Term), 
+       data = pr_df) + 
+  geom_boxplot() 
+```
+
+This expanded view of the corresponding bivariate plot includes the Term 
+variable. It shows nicely, that the loan amount is directly proportional to the 
+loan terms, i.e. longer-running loans tend to be larger, almost independent from 
+the credit grade.
+
+```{r LoanStatus.Simple_vs_AllCreditGrade_vs_Term, fig.width=12, fig.height=10}
+ggplot(aes(x = AllCreditGrade, y = LoanStatus.Simple), data = pr_df) + 
+  geom_count(aes(size = ..prop.., group = LoanStatus.Simple)) +
+  scale_size_area(max_size = 10) + 
+  facet_wrap( ~Term)
+```
+
+This expanded view of the corresponding bivariate plot includes the Term 
+variable. The point size is the percent of loans in that panel at that position, 
+grouped by the term and the loan status.
+The 12 month facet may be unreliable, as the dataset only contains relatively 
+few of these loans; I'll focus on the 36 and 60 months facet and compare those 
+to judge the added value of the term variable. It seems, we see the same pattern 
+concerning troubled loans as before. So the term variable may not help us much 
+here.
+
+
+# Multivariate Analysis
+
+### Talk about some of the relationships you observed in this part of the \
+investigation. Were there features that strengthened each other in terms of \
+looking at your feature(s) of interest?
+
+The loan status (variable LoanStatus.Simple) and the credit grade (variable 
+AllCreditGrade) in combination really clear up the business development of 
+Prosper (as far as the dataset allows). 
+
+The credit grade also better explains the relationship between the loan amount 
+and the borrower rate. Certain borrowers with bad credit grade are severely 
+limited in their loan conditions.
+
+### Were there any interesting or surprising interactions between features?
+
+I found it surprising that the loan term has only a minor explanatory value; I 
+would have expected, that short and long loans are handed out differently, 
+depending on the other borrower characteristics.
+
+The loan origination date and the credit grade heavily influence the 
+BorrowerRate, especially for low credit grades, probably due to the financial 
+crisis from 2007 on.
+
+### OPTIONAL: Did you create any models with your dataset? 
+I did not create a model with the dataset.
+
+------
+
+# Final Plots and Summary
+
+### Plot One
+```{r  Plot_One, echo=FALSE}
+ggplot(aes(x = AllCreditGrade, y = BorrowerRate), data = pr_df) + 
+  geom_boxplot() +
+  stat_summary(fun.y = mean, geom ='point', shape = 4) +
+  xlab("Credit Grade") +
+  ggtitle("Borrower Rate by Credit Grade")
+```
+
+### Description One
+The plot nicely shows that the borrower rate increases as the credit grade 
+deteriorates, with separable IQR windows for each credit grade (except for "NC" 
+and "Unknown"). Using a numeric credit rating would allow us to construct a 
+mathematical model for this kind of relationship (unfortunately, the dataset 
+only contains an incomplete numeric Prosper-proprietary rating).
+
+### Plot Two
+```{r Plot_Two, echo=FALSE}
+ggplot(aes(x = LoanOriginationDate, y = ..count..),
+       data = pr_df) +
+  geom_histogram(aes(fill = LoanStatus.Simple),  stat = "bin", binwidth = 30) +
+  scale_fill_brewer(type="qual") +  
+  ylab('Loan Count') +
+  xlab('Loan Origination Date') +
+  labs(fill = "Loan Status") +
+  facet_wrap( ~ AllCreditGrade) +
+  ggtitle("Loan Count by Origination Date and Loan Status")
+```
+
+### Description Two
+The longitudinal view on the data reveals the up and downs of Prospers business.
+
+It is very interesting to see the total 
+lack of granted loans between Nov. 2008 and mid-2009; the reason was a SEC 
+decision to regulate Prospers business model (see https://techcrunch.com/2008/11/26/sec-outlines-its-reasoning-for-shutting-down-p2p-lender-prosper/).
+It is unclear whether the subprime mortgage crisis in 2007 and 2008 is related 
+to the temporary shutdown of Prosper; the housing market already showed massive 
+problems due to subprime mortgages in 2007 already, but Prosper's business was 
+still going steady by then.
+
+The loan status adds another dimension to this plot, which is most insightful up 
+to mid-2011. Most loans run for 3 years, so by mid-2014, they should have run 
+their course and the final loan status is available. The proportion of loans 
+with status "Current"" becomes dominant from 2011 on. These loans were 
+originated and are still running or are past due (by the end of 2014). 
+For most of them, their final loan status is unknown.
+
+Prosper makes most of their business with borrowers having a credit grade 
+between "A" and "C", especially from 2013 on. 
+However, the temporal distribution is pretty different among the credit grades.
+Something interesting must have happened for the "C" credit grade - it seems, 
+Prosper originated almost no loans in the second half of 2010, but ramped up 
+loan origination massively from 2012 on. 
+
+The loan origination to HR credit grade was reduced, as it seems; 
+from 2013 on, HR loans do not participate in the overall uptake of the loan 
+business, but only show a very small peak, that disappears by 2014. Another 
+explanation would be a redefinition of the "HR" credit grade, such that more 
+borrowers would be classified with a better credit grade.
+
+
+### Plot Three
+```{r Plot_Three, echo=FALSE, fig.width=12, fig.height=12}
+ggplot(aes(x = LoanOriginalAmount, y = BorrowerRate),
+       data = pr_df) +
+  geom_bin2d( bins = 40, drop = TRUE) +
+  scale_x_continuous(name="Loan Amount ($)", breaks = seq(0,40000,5000)) +
+  scale_y_continuous(limits = c(NA,0.37)) +
+  facet_wrap(~ AllCreditGrade) +
+  geom_quantile(quantiles = 0.5, color = "Red") +
+  ggtitle("BorrowerRate by Loan Amount and Credit Grade")
+
+```
+
+### Description Three
+This plot reveals the different types of borrowers and how their credit grade 
+affects their borrower rate and their maximum available loan amount. It also 
+shows the focus of each type of borrower: especially borrowers with "E" and HR" 
+credit grade obviously favor consumer loans.
+
+------
+
+# Reflection
+
+I found the dataset to be highly fascinating. The dataset gave me a glimpse 
+behind the curtain of the industry. I have no finance or banking 
+background, and I only heard about peer-2-peer lending businesses on TV ads.  
+This circumstance proved to be difficult, as there is a lot of industry-specific 
+nomenclature (e.g. the meaning of different loan status) and the whole loan 
+lifecycle was new to me. I first had to understand the main concepts, before I 
+could start with a reasonable data exploration. 
+On a technical level, I found ggplot2 to be very versatile, but also pretty 
+brittle in some circumstances. For example, I could use scale_x_log10() + 
+geom_bin2d() without problems, but coord_trans(x = "log10") would not work. 
+Another issue was overplotting with geom_point(); as certain numeric variables 
+(e.g. BorrowerRate) only had a small number of distinct values, the usual 
+techniques to avoid overplotting would not work.
+
+Proper data preparation was certainly one of the success factors for the 
+analysis. Having ordered factors makes plotting so much easier; ggplot2 can 
+also use variables with correct date and time datatype directly and chooses the 
+right axis labels automatically. For example, GGpairs would only run efficiently 
+with LoanSetupTime being numeric, but would take forever with LoanSetupTime 
+being datediff datatype.
+
+The analysis could easily be enriched in future work, if the complete loan 
+lifecycle was available as a dataset. The dataset contained listing details only 
+as far as they are relevant to the loan, but the lifecycle of a listing would 
+be interesting as well.
+
+Another idea for future work could be a mathematical model, that forecasts the 
+loan status based on borrower, listing and loan characteristics. The current 
+dataset contains a lot of currently running loans with at least 3 years of 
+duration, so it would take a while to find out the final loan status. A model 
+could help both Prosper and the borrower avoid troubled loans early on.
+
+
+
+

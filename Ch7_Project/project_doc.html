@@ -1,0 +1,368 @@
+<?xml version='1.0' encoding='utf-8' ?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml">
+	<head>
+		<meta http-equiv="Content-Type" content="text/html; charset=utf-8"/>
+	</head>
+	<body>
+		<h1 id="questions">Questions</h1>
+		<h2 id="goal-and-machine-learning-deployment">Goal and Machine Learning deployment</h2>
+		<p>In 2000, Enron was one of the largest companies in the United States. 
+			By 2002, it had collapsed into bankruptcy due to widespread corporate fraud. 
+			In the resulting Federal investigation, a significant amount of typically 
+			confidential information entered into the public record, including tens of 
+			thousands of emails and detailed financial data for top executives. 
+			In this project, I will build a person-of-interest (PoI) identifier based on 
+			financial and email data made public as a result of the Enron scandal. 
+			As input data, a hand-generated list of PoIs in the fraud case is available, 
+			which means individuals who were indicted, reached a settlement 
+			or plea deal with the government, or testified in exchange for prosecution 
+			immunity. The identifier will be a machine learning mode, that can identify with 
+			some validity a possible PoI based on his compensation (e.g. stock value,
+			<br/>
+			salary etc.) and on his communication behaviour (e.g. emails sent to other PoIs, 
+			total number of sent emails etc.).
+			<br/>
+		</p>
+		<h3 id="data-exploration">Data Exploration</h3>
+		<p>As a basis for any further investigation, I transferred the pickled data set 
+			into a Pandas data frame for easier handling (
+			<a href="https://discussions.udacity.com/t/pickling-pandas-df/174753/2">approach</a>)
+		</p>
+		<p>There are 146 data points in the final project dataset. 18 records contain the 
+			PoI flag, i.e. 128 do not (poi has no NaN values). 
+			Each record in the data set has 21 attributes. Most features have a fair 
+			amount of NaN values; especially problematic are the 
+			following features:</p>
+		<ul>
+			<li>deferral_payments: 107</li>
+			<li>restricted_stock_deferred: 128</li>
+			<li>director_fees: 129</li>
+			<li>loan_advances: 142</li>
+		</ul>
+		<p>Those features will be removed from further analysis. Also, email_address is 
+			removed. All NaN values are replace with 0. In summary, 15 input features and 
+			the PoI label remain.
+			<br/>
+		</p>
+		<p>As part of my small exploratory data analysis, I created a number of box plots, 
+			in which the non-PoI and the PoI-associated distribution of a feature can be 
+			compared (
+			<a href="https://discussions.udacity.com/t/eda-on-financial-features/192556/3">based on this approach</a>). 
+			Most of these box plots were not particularly insightful, there was 
+			no discernible difference between the two distributions which means that the 
+			features are not particularly helpful in telling apart PoIs and non-PoIs.
+			<br/>
+			However, the following plots were interesting: 
+		</p>
+		<p>
+			<img alt="Boxplot on bonus grouped by poi" title="Boxplot on bonus grouped by poi" border="0" src="./boxplot_bonus.png"/>
+		</p>
+		<p>PoIs tend to have higher bonus payments than non-PoIs. The average bonus payment 
+			overall is $1,333,474, the median  bonus payment overall is $300,000.</p>
+		<p>
+			<img alt="Boxplot on deferred income grouped by poi" title="Boxplot on deferred income grouped by poi" border="0" src="./boxplot_deferred_income.png"/>
+		</p>
+		<p>PoIs tend to have a larger share of deferred income than non-PoIs. This could 
+			indicate that PoIs have higher stakes in the game and are willing to bet on the 
+			company. The mean overall deferred income is $-382,762, the overall median 
+			deferred income is $0.</p>
+		<p>
+			<img alt="Boxplot on long term incentive grouped by poi" title="Boxplot on long term incentive grouped by poi" border="0" src="./boxplot_long_term_incentive.png"/>
+		</p>
+		<p>PoIs tend to have massively larger long term incentive payments than non-PoIs. 
+			Typically, long-term incentives are given to executives to guide the strategic 
+			development of the enterprise. 
+			The mean overall long-term incentive is $664,683, the overall median 
+			long-term incentive is $0.</p>
+		<p>
+			<img alt="Boxplot on shared_receipt_with_poi grouped by poi" title="Boxplot on shared_receipt_with_poi grouped by poi" border="0" src="./boxplot_shared_receipt_with_poi.png"/>
+		</p>
+		<p>PoIs tend to receive more emails that were also sent to other PoIs; you could 
+			argue that PoIs had a tighter communication network to other PoIs than to 
+			non-PoIs , which would be normal for partners in crime.
+			<br/>
+			The mean overall value for shared_receipt_with_poi is ca. 692, the overall 
+			median value for shared_receipt_with_poi is ca. 102.
+		</p>
+		<h3 id="data-dictionary">Data dictionary</h3>
+		<p>There are 20 independent variables, and one dependent variable, poi. Here is a 
+			description of the features:</p>
+		<ul>
+			<li>compensation-related</li>
+			<ul>
+				<li>salary:  Reflects items such as base salary, executive cash 
+					    allowances, and benefits payments.</li>
+				<li>deferral_payments: Reflects distributions from a deferred compensation 
+					arrangement due to termination of employment or due to in-service withdrawals 
+					as per plan provisions.</li>
+				<li>total_payments: Sum of salary, bonus, long term incentive, deferred income,
+					 deferral payments, loan advances, other, expenses, director fees. All numbers 
+					 are in US Dollars. </li>
+				<li>loan_advances: Reflects total amount of loan advances, excluding repayments, 
+					provided by the Debtor in return for a promise of repayment. In certain 
+					instances, the terms of the promissory notes allow for the option to repay with 
+					stock of the company.</li>
+				<li>bonus: Reflects annual cash incentives paid based upon company performance. 
+					Also may include other retention payments.</li>
+				<li>long_term_incentive:  Reflects long-term incentive cash payments from 
+					various long-term incentive programs designed to tie executive compensation to 
+					long-term success as measured against key performance drivers and business 
+					objectives over a multi-year period, generally 3 to 5 years.</li>
+				<li>other: Reflects items such as payments for severance, consulting services, 
+					    relocation costs, tax advances and allowances for employees on international 
+					    assignment (i.e. housing allowances, cost of living allowances, payments 
+					    under Enron’s Tax Equalization Program, etc.). May also include payments 
+					    provided with respect to employment agreements, as well as imputed income 
+					    amounts for such things as use of corporate aircraft.
+					<br/>
+				</li>
+				<li>deferred_income:  Reflects voluntary executive deferrals of salary, 
+					    annual cash incentives, and long-term cash incentives as well as cash fees 
+					    deferred by non-employee directors under a deferred compensation arrangement. 
+					    May also reflect deferrals under a stock option or phantom stock unit in 
+					    lieu of cash arrangement.
+					<br/>
+				</li>
+				<li>expenses:  Reflects reimbursements of business expenses. May include fees 
+					    paid for consulting services.
+					<br/>
+				</li>
+				<li>director_fees:  Reflects cash payments and/or value of stock grants made 
+					    in lieu of cash payments to non-employee directors.
+					<br/>
+				</li>
+			</ul>
+			<li>stock_related</li>
+			<ul>
+				<li>restricted_stock_deferred:  Reflects value of restricted stock voluntarily 
+					deferred prior to release under a deferred compensation arrangement. </li>
+				<li>total_stock_value: sum of exercised_stock_options, 
+					restricted_stock_deferred and restricted_stock in US Dollars.
+					<br/>
+				</li>
+				<li>exercised_stock_options:  Reflects amounts from exercised stock options 
+					    which equal the market value in excess of the exercise price on the date 
+					    the options were exercised either through cashless (same-day sale), stock 
+					    swap or cash exercises. The reflected gain may differ from that realized 
+					    by the insider due to fluctuations in the market price and the timing of 
+					    any subsequent sale of the securities.
+					<br/>
+				</li>
+				<li>restricted_stock:  Reflects the gross fair market value of shares and 
+					    accrued dividends (and/or phantom units and dividend equivalents) on the 
+					    date of release due to lapse of vesting periods, regardless of whether 
+					    deferred.
+					<br/>
+				</li>
+			</ul>
+			<li>email-related:</li>
+			<ul>
+				<li>to_messages: number of email messages to this person</li>
+				<li>email_address</li>
+				<li>shared_receipt_with_poi: number of email messages that the person received 
+					along with some PoI.</li>
+				<li>from_messages: number of email messages from this person</li>
+				<li>from_poi_to_this_person: number of email messages from a poi to this 
+					    person</li>
+				<li>from_this_person_to_poi: number of email messages from this person to 
+					    a poi</li>
+			</ul>
+			<li>poi: PoI label, 0 for no PoI, 1 for PoI</li>
+		</ul>
+		<h3 id="outlier-investigation">Outlier Investigation</h3>
+		<p>As discussed in the quizzes, the data record 'TOTAL' is an outlier and will be 
+			removed from the data set. The key 'THE TRAVEL AGENCY IN THE PARK' is also an 
+			outlier, as it does not sound like a real person who could be a PoI. Other 
+			extreme values were not removed, as they seemed to reasonable in the context of 
+			the data set and thus provide valuable information.</p>
+		<h2 id="features">Features</h2>
+		<h3 id="new-feature-development">New Feature development</h3>
+		<p>I developed three new features based on the results of the exploratory data 
+			analysis. There, bonus, long_term_incentive and shared_receipt_with_poi 
+			proved to be features with a high explanatory value. 
+			The reasoning was that I could improve an already informative feature by 
+			relating it to a logical base value:
+			<br/>
+		</p>
+		<ul>
+			<li>
+				<strong>bonus_to_salary_ratio</strong>: This feature is the ratio of the bonus to the salary 
+				of a person. The higher your share of your variable compensation, the 
+				more likely you are a PoI. 
+			</li>
+			<li>
+				<strong>lti_ratio</strong>: This feature is the ratio of the long_term_incentive to the 
+				total_payments. The more you are invested in the enterprise, the higher the 
+				more likely you are a PoI.
+			</li>
+			<li>
+				<strong>shared_ratio</strong>: This feature is the ratio between the 
+				shared_receipt_with_poi feature and the to_messages feature. The higher your 
+				share of communication with PoIs, the more likely you are a PoI yourself.
+			</li>
+		</ul>
+		<p>These three new features are added to the Pandas data frame and the feature list, 
+			and hence are used in the following steps. In total, 18 features are available 
+			for model-building. </p>
+		<h3 id="feature-selection">Feature Selection</h3>
+		<p>Univariate feature selection using 
+			<code>SelectKBest()</code> is deployed for this project. 
+			The number of features to be selected is automatically determined using 
+
+			<code>GridSearchCV()</code> on a Pipeline. The search range of the number of features was 
+			4 to 14. In different runs of 
+			<code>SelectKBest()</code>, the ideal number of features was 
+			always greater or equal to 10.
+			<br/>
+			Here are the selected Features, their scores and their P-Values:
+		</p><table>  <tr>    <th>Feature</th>    <th>Score</th>     <th>p-value</th>  </tr>  <tr>    <td>exercised_stock_options</td>    <td style="text-align: right;">24.82</td>     <td style="text-align: right;">0.000</td>  </tr>  <tr>    <td>total_stock_value</td>    <td style="text-align: right;">24.18</td>     <td style="text-align: right;">0.000</td>  </tr>  <tr>    <td>bonus</td>    <td style="text-align: right;">20.79</td>     <td style="text-align: right;">0.000</td>  </tr>  <tr>    <td>salary</td>    <td style="text-align: right;">18.29</td>     <td style="text-align: right;">0.000</td>  </tr>    <tr>    <td>lti_ratio</td>    <td style="text-align: right;">13.85</td>     <td style="text-align: right;">0.000</td>  </tr>  <tr>    <td>deferred_income</td>    <td style="text-align: right;">11.46</td>     <td style="text-align: right;">0.001</td>  </tr>  <tr>    <td>bonus_to_salary_ratio</td>    <td style="text-align: right;">10.78</td>     <td style="text-align: right;">0.001</td>  </tr>  <tr>    <td>long_term_incentive</td>    <td style="text-align: right;">9.92</td>     <td style="text-align: right;">0.002</td>  </tr>   <tr>    <td>restricted_stock</td>    <td style="text-align: right;">9.21</td>     <td style="text-align: right;">0.003</td>  </tr>     <tr>    <td>shared_ratio</td>    <td style="text-align: right;">9.10</td>     <td style="text-align: right;">0.003</td>  </tr></table>
+		<p>It is especially interesting to see that my three newly developed features 
+			bonus_to_salary_ratio, lti_ratio and shared_ratio are 
+			among the top ten features chosen by 
+			<code>SelectKBest()</code>.
+		</p>
+		<p>The features selection step is the first step in the pipeline; the second step is
+			a classifier, that uses the selected features for training. The 
+			best-performing classifier was a decision tree classifier. Here are the feature 
+			importances and the scores:</p><table>  <tr>    <th>Feature Importance</th>    <th>Score</th>   </tr>  <tr>    <td>bonus</td>    <td style="text-align: right;">0.31</td>   </tr>  <tr>    <td>lti_ratio</td>    <td style="text-align: right;">0.21</td>   </tr>    <tr>    <td>shared_ratio</td>    <td style="text-align: right;">0.15</td>   </tr>  <tr>        <td>exercised_stock_options</td>        <td style="text-align: right;">0.10</td>   </tr>   <tr>        <td>salary</td>        <td style="text-align: right;">0.08</td>     </tr>     <tr>        <td>total_stock_value</td>        <td style="text-align: right;">0.08</td>     </tr>    <tr>        <td>restricted_stock</td>        <td style="text-align: right;">0.07</td>     </tr>   <tr>        <td>deferred_income</td>        <td style="text-align: right;">0.00</td>     </tr>    <tr>        <td>long_term_incentive</td>        <td style="text-align: right;">0.00</td>     </tr>   <tr>        <td>bonus_to_salary_ratio</td>        <td style="text-align: right;">0.00</td>     </tr></table>
+		<h3 id="feature-scaling">Feature scaling</h3>
+		<p>Feature scaling was not necessary in this project, as it was not needed for the 
+			two algorithms 
+			<code>GaussianNB()</code> and 
+			<code>DecisionTreeClassifier()</code>. The Naive Bayes 
+			algorithm is based on the probability distribution of each feature; scaling would 
+			not change the distribution of a single feature (only the absolute feature 
+			values). Decision Trees select a single, 
+			predictive feature and determine a splitting criterion; scaling this feature 
+			would change the absolute but not the relative value of the split.
+			<br/>
+		</p>
+		<h2 id="pick-and-tune-an-algorithm">Pick and Tune an Algorithm</h2>
+		<h3 id="algorithm-selection">Algorithm selection</h3>
+		<p>I ended up using a 
+			<code>DecisionTreeClassifier()</code>. I tried to use 
+
+			<code>GaussianNB()</code> for comparison, also with a prior SelectKBest step. 
+			Here is the performance comparison:
+		</p><table style="border: 1px solid black; border-collapse: collapse;">  <tr style="border: 1px solid black; border-collapse: collapse;">    <th style="border: 1px solid black; border-collapse: collapse;">    Evaluation metric </th>    <th style="border: 1px solid black; border-collapse: collapse;">    GaussianNB</th>     <th style="border: 1px solid black; border-collapse: collapse;">    DecisionTreeClassifier</th>  </tr>  <tr>    <td>Accuracy</td>        <td style="text-align: right;">0.84</td>     <td style="text-align: right;">0.81</td>  </tr>  <tr>    <td>Precision</td>        <td style="text-align: right;">0.37</td>     <td style="text-align: right;">0.35</td>  </tr>  <tr>    <td>Recall</td>        <td style="text-align: right;">0.32</td>     <td style="text-align: right;">0.40</td>  </tr>  <tr>    <td>F1</td>        <td style="text-align: right;">0.34</td>     <td style="text-align: right;">0.37</td>  </tr></table>
+		<p>Based on these results, I used the decision tree classifier for the final 
+			analysis, although it is a close call, especially when you consider the training 
+			time. GaussianNB's best model is ready after a few seconds, whereas the best 
+			Decision Tree model takes about 1 minute.
+			<br/>
+		</p>
+		<h3 id="algorithm-tuning">Algorithm tuning</h3>
+		<p>Almost any type of classifier or estimator algorithm has some parameters, that 
+			are not directly learned but have to be set by the user. These parameters 
+			influence the way, how an algorithm decides on the best model. As a example, a 
+			decision tree has a max_depth parameter, that limits the depth of the 
+			constructed tree. If you don't tune these parameters well, the performance of the 
+			algorithm may suffer, which can be seen in poor evaluation metrics. </p>
+		<p>As some algorithms have several parameters, it becomes unclear, how each 
+			parameter setting might affect the overall performance, so it is necessary to 
+			systematically search for a good set of parameters. 
+			<code>GridSearchCV()</code> creates an 
+			exhaustive set of combinations of all desired parameter values and then cross-validates 
+			each parameter combination on the machine learning model. In the end, the best 
+			parameter combination is kept.
+			<br/>
+		</p>
+		<p>In my project a pipeline 
+			<a href="https://discussions.udacity.com/t/error-using-pipeline/171750/6">like this one</a> was used, so that 
+			<code>GridSearchCV()</code> 
+			could jointly search for both the best parameters on the SelectKBest feature 
+			selector and the decision tree classification model. 
+		</p>
+		<p>The parameter k of SelectKBest and the parameters min_samples_split, 
+			min_samples_leaf and class_weight were tuned. 
+			In one setting, the PoI class was given twice the weight as the non-PoI-class, 
+			so that the classifier would optimize the decision tree for PoIs. In the 
+			grid search, a F1 score was calculated to determine the best parameter settings.</p>
+		<p>In the end, the best parameters were:
+			<br/>
+		</p>
+		<ul>
+			<li>k=10</li>
+			<li>class_weight={0: 1, 1: 2} </li>
+			<li>min_samples_leaf=2</li>
+			<li>min_samples_split=6</li>
+		</ul>
+		<h2 id="validate-and-evaluate">Validate and Evaluate</h2>
+		<h3 id="validation">Validation</h3>
+		<p>
+			<a href="http://scikit-learn.org/stable/modules/cross_validation.html#cross-validation">Sci-Kit Learn</a> describes the need to validate the decisions surrounding 
+			machine learning pretty good. I'll summarize the most important points here. 
+		</p>
+		<p>Learning the parameters of a prediction function and testing it on the same data 
+			is a methodological mistake: a model that would just repeat the labels of the 
+			samples that it has just seen would have a perfect score but would fail to 
+			predict anything useful on yet-unseen data. This situation is called overfitting. 
+			To avoid it, it is common practice when performing a (supervised) machine 
+			learning experiment to hold out part of the available data as a test set 
+			X_test, y_test. </p>
+		<p>When evaluating different settings (“hyperparameters”) for estimators, there is 
+			still a risk of overfitting on the test set because the parameters can be 
+			tweaked until the estimator performs optimally. 
+			This way, knowledge about the test set can “leak” into the model and evaluation 
+			metrics no longer report on generalization performance. To solve this problem, 
+			yet another part of the dataset can be held out as a so-called “validation set”: 
+			training proceeds on the training set, after which evaluation is done on the 
+			validation set, and when the experiment seems to be successful, final evaluation 
+			can be done on the test set. However, by partitioning the available data into 
+			three sets, we drastically reduce the number of samples which can be used for 
+			learning the model, and the results can depend on a particular random choice for 
+			the pair of (train, validation) sets.</p>
+		<p>A solution to this problem is a procedure called cross-validation (CV for short). 
+			A test set should still be held out for final evaluation, but the validation set 
+			is no longer needed when doing CV. </p>
+		<p>In my project, I use cross-validation iterators with stratification based on 
+			class labels, the 
+			<code>StratifiedShuffleSplit()</code>. The iterator will generate a 
+			user-defined number of independent train / test data set splits. 
+			Samples are first shuffled and then split into a pair of train and test sets.
+			Some classification problems can exhibit a large imbalance in the distribution 
+			of the target classes, as it is the case here: there are many more non-PoIs in 
+			the data set than PoIs. In such cases it is recommended to use stratified 
+			sampling as implemented in StratifiedShuffleSplit to ensure that relative class 
+			frequencies is approximately preserved in each train and validation fold.
+		</p>
+		<p>I used 100 splits and a test size of 30% of the data set (i.e. a training size 
+			of 70%).</p>
+		<h3 id="evaluation">Evaluation</h3>
+		<p>The accuracy of my DecisionTreeClassifier was 0.81, That means that my 
+			classifier correctly identified ca. 80% of the true positives and the true 
+			negatives in relation to all cases. In my project, the positives are the PoIs, 
+			and the negatives are the non-PoIs. </p>
+		<p>The precision of my DecisionTreeClassifier was about 0.35, which is a low value, 
+			as the precision should ideally be 1.00. It means that my classifier occasionally 
+			thinks that a non-PoI is actually a PoI, which would be a false positive. It 
+			effectively recognizes too many PoIs (false alarms).</p>
+		<p>The recall of my DecisionTreeClassifier was 0.40, which is marginally better 
+			than the precision. In this case, some actual PoIs are classified as non-PoIs, 
+			so the classifier misses those real PoIs (albeit less often than it produces 
+			false alarms).</p>
+		<p>As there is a tradeoff between precision and recall, I would argue that it is 
+			important to catch the real PoIs and not let them walk free, so a higher recall 
+			is more desirable than a higher precision (that's why I optimized the 
+			DecisionTreeClassifier for PoIs). However, a low precision leads to a longer 
+			list of suspects and a lot of unwarranted allegations and police work, 
+			which I think is the lesser problem, as any citizen is considered innocent 
+			until proven guilty.
+			<br/>
+		</p>
+		<p>Both precision an recall are not particularly high, which makes this classifier 
+			probably unsuitable for actual deployment in a law enforcement setting. </p>
+		<h1 id="references">References</h1>
+		<p>[1]: https://discussions.udacity.com/t/pickling-pandas-df/174753/2 Pickle to 
+			Data Frame</p>
+		<p>[2]: https://discussions.udacity.com/t/eda-on-financial-features/192556/3 EDA 
+			on financial features </p>
+		<p>[3]: https://discussions.udacity.com/t/error-using-pipeline/171750/6 Pipeline 
+			usage</p>
+		<p>[4]: http://scikit-learn.org/stable/modules/cross_validation.html#cross-validation 
+			Cross-validation: evaluating estimator performance</p>
+		<p>I hereby confirm that this submission is my work. 
+			I have cited above the origins of any parts of the submission that were taken 
+			from Websites, books, forums, blog posts, github repositories, etc.</p>
+	</body>
+</html>

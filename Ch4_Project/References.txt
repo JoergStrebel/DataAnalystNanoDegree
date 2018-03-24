@@ -1,0 +1,3 @@
+Please see my  main document for all references.
+The Python code "clean_transform_fiels.py" was basically copied from the Udacity quizzes.
+Some of the SQL queries were reused from the provided sample project (with slight modifications to fit my PostgreSQL schema).
